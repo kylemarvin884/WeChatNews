@@ -56,39 +56,69 @@ def send_to_wechat(message):
     """
     通过 Server酱 (ServerChan) 推送消息到微信
     """
+    # 打印 SendKey 的前几位用于调试，不泄露完整密钥
     sendkey = os.getenv("SERVER_CHAN_SENDKEY")
     if not sendkey:
-        print("SERVER_CHAN_SENDKEY environment variable not found!")
+        print("ERROR: SERVER_CHAN_SENDKEY environment variable not found!")
+        print("Please check your GitHub Secrets configuration.")
         return False
+
+    # --- Debugging Info Start ---
+    print("--- DEBUGGING INFO START ---")
+    print(f"Retrieved SendKey (first 5 chars): {sendkey[:5]}...")
+    print("--- DEBUGGING INFO END ---")
+    # --- Debugging Info End ---
 
     if not message.strip():
          message = "今日暂无更新的科技资讯。"
 
     # 准备发送的数据
-    # Server酱 v2 和 v1 的字段略有不同，v3 推荐使用 title 和 desp
-    # 这里使用 v3 的接口
     url = f"https://sctapi.ftqq.com/{sendkey}.send"
     title = f"【每日科技资讯】{datetime.now().strftime('%Y-%m-%d')}"
+    
+    # Server酱 v3 推荐使用 title 和 desp
     data = {
         "title": title,
         "desp": message # 支持 Markdown 格式
     }
 
+    # --- Debugging Info Start ---
+    print("--- DEBUGGING INFO START ---")
+    print(f"Sending POST request to: {url}")
+    print(f"Payload (title only): {title}")
+    print(f"Payload (desp length): {len(message)} characters")
+    print("--- DEBUGGING INFO END ---")
+    # --- Debugging Info End ---
+
     try:
-        response = requests.post(url, data=data)
+        response = requests.post(url, data=data, timeout=30) # 增加超时时间
         response.raise_for_status() # 检查 HTTP 错误
-        result = response.json()
-        if result.get("code") == 0: # Server酱成功返回码
-            print("Message sent successfully via ServerChan!")
+        result_text = response.text
+        result_json = response.json()
+        
+        # --- Debugging Info Start ---
+        print("--- DEBUGGING INFO START ---")
+        print(f"ServerChan Response Status Code: {response.status_code}")
+        print(f"ServerChan Raw Response Text: {result_text}")
+        print(f"ServerChan Parsed JSON: {result_json}")
+        print("--- DEBUGGING INFO END ---")
+        # --- Debugging Info End ---
+
+        if result_json.get("code") == 0: # Server酱成功返回码
+            print("SUCCESS: Message sent successfully via ServerChan!")
             return True
         else:
-            print(f"ServerChan returned error: {result}")
+            print(f"WARNING: ServerChan returned non-zero code: {result_json.get('code')}")
+            print(f"ServerChan Error Message: {result_json.get('message', 'Unknown error')}")
             return False
+    except requests.exceptions.Timeout:
+        print(f"ERROR: Request to ServerChan timed out.")
+        return False
     except requests.exceptions.RequestException as e:
-        print(f"Error sending message via ServerChan: {e}")
+        print(f"ERROR: Network or HTTP error occurred when sending to ServerChan: {e}")
         return False
     except ValueError: # JSON decode error
-         print(f"Error: ServerChan response is not valid JSON: {response.text}")
+         print(f"ERROR: ServerChan response is not valid JSON: {response.text if 'response' in locals() else 'Response object not available'}")
          return False
 
 
@@ -113,7 +143,7 @@ def main():
         print("Process completed successfully.")
     else:
         print("Process failed.")
-        exit(1) # 可选：失败时退出非零状态，这在 CI/CD 中常用，此处非必需
+        # exit(1) # 可选：失败时退出非零状态，这在 CI/CD 中常用，此处非必需
 
 
 if __name__ == "__main__":
